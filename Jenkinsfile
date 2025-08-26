@@ -48,7 +48,7 @@ pipeline {
     stage("Static Analysis - SonarQube") {
       steps {
         withSonarQubeEnv("${SONARQUBE_SERVER}") {
-          withCredentials([string(credentialsId: "${SONAR_TOKEN_CRED}", variable: 'SONAR_TOKEN')]) {
+          withCredentials([string(credentialsId: "${SONAR_TOKEN_CRED}", variable: 'Sonar-token')]) {
             sh """
               echo "-------- Running SonarQube Analysis --------"
               mvn -B sonar:sonar \
