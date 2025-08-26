@@ -17,7 +17,7 @@ pipeline {
     stage("Checkout Stage") {
       steps{
         checkout scmGit(
-          branches: [[name: '*/maIN']],
+          branches: [[name: '*/main']],
           extensions: [],
           userRemoteConfigs: [[url: 'https://github.com/Harish6498-git/Datastore.git']]
         )
