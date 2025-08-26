@@ -6,9 +6,6 @@ pipeline {
   }
 
   environment {
-    // If you want, you can remove this and use withCredentials below for Docker too
-    // DOCKERHUB_CREDENTIALS = credentials("dockerhub")
-
     // SonarQube integration
     SONARQUBE_SERVER = 'SonarQube'     // Must match Manage Jenkins > System > SonarQube servers (Name)
     SONAR_TOKEN_CRED = 'Sonar-token'   // Jenkins credential ID (Secret text) for your Sonar token
@@ -27,21 +24,21 @@ pipeline {
 
     stage("Building Application") {
       steps {
-        sh """
+        sh '''
           echo "-------- Building Application --------"
           mvn -B clean package
           echo "------- Application Built Successfully --------"
-        """
+        '''
       }
     }
 
     stage("Execute Testcases") {
       steps {
-        sh """
+        sh '''
           echo "-------- Executing Testcases --------"
           mvn -B test
           echo "-------- Testcases Execution Complete --------"
-        """
+        '''
       }
     }
 
@@ -49,7 +46,7 @@ pipeline {
     stage("Static Analysis - SonarQube") {
       steps {
         withSonarQubeEnv("${SONARQUBE_SERVER}") {
-          // IMPORTANT: expose as SONAR_TOKEN (no hyphen), then use single quotes in sh
+          // Expose as SONAR_TOKEN (no hyphen), use single quotes in sh so shell expands vars
           withCredentials([string(credentialsId: "${SONAR_TOKEN_CRED}", variable: 'SONAR_TOKEN')]) {
             sh '''
               echo "-------- Running SonarQube Analysis --------"
@@ -80,41 +77,45 @@ pipeline {
 
     stage("Pushing Artifacts To S3") {
       steps {
-        sh """
+        sh '''
           echo "-------- Pushing Artifacts To S3 --------"
-          aws s3 cp ./target/*.jar s3://jenkins-s3-artifacts-datastore-app/
+          # Upload to datastore/ prefix to match least-privilege IAM policy
+          aws s3 cp ./target/*.jar s3://jenkins-s3-artifacts-datastore-app/datastore/
           echo "-------- Pushing Artifacts To S3 Completed --------"
-        """
+        '''
       }
     }
 
     stage("Creating Docker Image") {
       steps {
-        sh """
+        sh '''
           echo "-------- Building Docker Image --------"
           docker build -t datastore:"${App_Version}" .
           echo "-------- Image Successfully Built --------"
-        """
+        '''
       }
     }
 
     stage("Scaning Docker Image") {
       steps {
-        sh """
+        sh '''
           echo "-------- Scanning Docker Image --------"
+          # Optional strict mode:
+          # trivy --download-db-only || true
+          # trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 datastore:"${App_Version}"
           trivy image datastore:"${App_Version}"
           echo "-------- Scanning Docker Image Complete --------"
-        """
+        '''
       }
     }
 
     stage("Tagging Docker Image") {
       steps{
-        sh """
+        sh '''
           echo "-------- Tagging Docker Image --------"
           docker tag datastore:"${App_Version}" harish0604/datastore:"${App_Version}"
           echo "-------- Tagging Docker Image Completed."
-        """
+        '''
       }
     }
 
@@ -130,6 +131,14 @@ pipeline {
             echo "-------- Pushing Docker Image To DockerHub --------"
             docker push harish0604/datastore:"${App_Version}"
             echo "-------- Docker Image Pushed Successfully --------"
+          '''
+        }
+      }
+      post {
+        always {
+          sh '''
+            echo "-------- Docker Logout --------"
+            docker logout || true
           '''
         }
       }
@@ -162,4 +171,3 @@ pipeline {
     }
   }
 }
-
