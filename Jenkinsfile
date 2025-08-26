@@ -6,11 +6,12 @@ pipeline {
   }
 
   environment {
-    DOCKERHUB_CREDENTIALS = credentials("dockerhub")
+    // If you want, you can remove this and use withCredentials below for Docker too
+    // DOCKERHUB_CREDENTIALS = credentials("dockerhub")
 
     // SonarQube integration
-    SONARQUBE_SERVER = 'SonarQube'     // Matches Jenkins > Manage Jenkins > System > SonarQube servers (Name)
-    SONAR_TOKEN_CRED = 'Sonar-token'   // Jenkins credential (Secret text) storing your SonarQube token
+    SONARQUBE_SERVER = 'SonarQube'     // Must match Manage Jenkins > System > SonarQube servers (Name)
+    SONAR_TOKEN_CRED = 'Sonar-token'   // Jenkins credential ID (Secret text) for your Sonar token
   }
 
   stages {
@@ -48,16 +49,18 @@ pipeline {
     stage("Static Analysis - SonarQube") {
       steps {
         withSonarQubeEnv("${SONARQUBE_SERVER}") {
-          withCredentials([string(credentialsId: "${SONAR_TOKEN_CRED}", variable: 'Sonar-token')]) {
-            sh """
+          // IMPORTANT: expose as SONAR_TOKEN (no hyphen), then use single quotes in sh
+          withCredentials([string(credentialsId: "${SONAR_TOKEN_CRED}", variable: 'SONAR_TOKEN')]) {
+            sh '''
               echo "-------- Running SonarQube Analysis --------"
+              echo "SONAR_HOST_URL=$SONAR_HOST_URL"
               mvn -B sonar:sonar \
                 -Dsonar.projectKey=datastore \
                 -Dsonar.projectName=datastore \
                 -Dsonar.host.url=$SONAR_HOST_URL \
                 -Dsonar.login=$SONAR_TOKEN
               echo "-------- SonarQube Analysis Triggered --------"
-            """
+            '''
           }
         }
       }
@@ -117,25 +120,28 @@ pipeline {
 
     stage("Loggingin & Pushing Docker image To DockerHub") {
       steps {
-        sh """
-          echo "-------- Logging To DockerHub --------"
-          docker login -u $DOCKERHUB_CREDENTIALS_USR --password $DOCKERHUB_CREDENTIALS_PSW
-          echo "-------- DockerHub Login Successful --------"
+        // Use scoped creds + --password-stdin (safer), and push the SAME repo you tagged
+        withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DH_USER', passwordVariable: 'DH_PASS')]) {
+          sh '''
+            echo "-------- Logging To DockerHub --------"
+            echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+            echo "-------- DockerHub Login Successful --------"
 
-          echo "-------- Pushing Docker Image To DockerHub --------"
-          docker push harish/datastore:"${App_Version}"
-          echo "-------- Docker Image Pushed Successfully --------"
-        """
+            echo "-------- Pushing Docker Image To DockerHub --------"
+            docker push harish0604/datastore:"${App_Version}"
+            echo "-------- Docker Image Pushed Successfully --------"
+          '''
+        }
       }
     }
 
     stage("cleanup") {
       steps {
-        sh """
+        sh '''
            echo "-------- Cleaning Up Jenkins Machine --------"
            docker image prune -a -f
            echo "-------- Clean Up Successful --------"
-        """
+        '''
       }
     }
 
